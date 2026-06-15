@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>SimpleOCR — Carino Systems</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Red+Hat+Display:wght@700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#050505;
+      --surface:#0a0a0a;
+      --surface-2:#141414;
+      --surface-3:#1a1a1a;
+      --card:#0d0d0d;
+
+      --accent:#eab308;
+      --accent-bright:#fde047;
+      --accent-soft:rgba(234,179,8,.08);
+      --accent-dim:rgba(234,179,8,.30);
+
+      --text:#f5f5f4;
+      --muted:#a3a3a3;
+      --faint:#555;
+      --border:#1f1f1f;
+
+      --danger:#ef4444;
+      --warn:#f59e0b;
+      --ok:#22c55e;
+
+      --radius:14px;
+      --shadow:0 18px 40px rgba(0,0,0,.7);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+      overflow:hidden;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    ::selection{background:var(--accent);color:#050505}
+    :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+    ::-webkit-scrollbar{width:9px;height:9px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#232323;border-radius:6px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--accent-dim)}
+
+    /* ─── CARINO HEADER ──────────────────────────────────────── */
+    .cs-header{
+      height:70px; flex-shrink:0;
+      background:linear-gradient(180deg,#0f0f0f 0%,#050505 100%);
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 24px; gap:12px; z-index:100;
+    }
+    .cs-left{display:flex;align-items:center;gap:14px;min-width:0}
+    .cs-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+    .cs-page-name{
+      font-family:'Red Hat Display',sans-serif;
+      font-size:1.4rem; font-weight:900; line-height:1;
+      background:linear-gradient(130deg,#fef08a 0%,#eab308 50%,#b45309 100%);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+      white-space:nowrap;
+    }
+    .cs-info{display:flex;align-items:baseline;gap:10px;border-left:1px solid var(--border);padding-left:14px}
+    .cs-info-title{font-family:'IBM Plex Mono',monospace;font-size:.75rem;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+    .cs-info-desc{font-family:'IBM Plex Mono',monospace;font-size:.65rem;color:var(--faint);white-space:nowrap}
+    .cs-icon-btn{
+      width:32px;height:32px;border:1px solid var(--border);border-radius:4px;
+      display:flex;align-items:center;justify-content:center;
+      color:var(--faint);transition:.2s;text-decoration:none;background:transparent;cursor:pointer;
+    }
+    .cs-icon-btn:hover{border-color:var(--accent);color:#050505;background:var(--accent);transform:translateY(-2px);box-shadow:0 4px 12px rgba(234,179,8,.15)}
+    .cs-icon-btn svg{width:15px;height:15px}
+
+    /* App shell */
+    .app{
+      height:calc(100vh - 70px);
+      overflow:hidden;
+      display:flex;
+      justify-content:center;
+    }
+
+    .wrap{
+      width:min(1180px, 100%);
+      height:100%;
+      padding:18px;
+    }
+
+    .grid{
+      height:100%;
+      display:grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap:16px;
+    }
+
+    @media (max-width: 980px){
+      body{overflow:auto}
+      .app{height:auto; overflow:visible}
+      .wrap{height:auto}
+      .grid{grid-template-columns: 1fr; height:auto}
+    }
+    @media (max-width: 560px){
+      .cs-info{display:none}
+    }
+
+    .pane{
+      min-height:0;
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .pane-head{
+      padding:14px 14px 10px 14px;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(to bottom, rgba(255,255,255,.02), rgba(255,255,255,0));
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .pane-title{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:.78rem;
+      letter-spacing:.16em;
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .pane-body{
+      padding:14px;
+      overflow:auto;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    /* Dropzone */
+    .drop{
+      border:2px dashed var(--border);
+      border-radius:12px;
+      padding:18px;
+      background:rgba(255,255,255,.02);
+      transition:.18s;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+    }
+    .drop:hover{border-color:var(--accent-dim)}
+    .drop.dragover{
+      border-color:var(--accent);
+      box-shadow:0 0 0 4px rgba(234,179,8,.14);
+      background:rgba(234,179,8,.06);
+    }
+    .drop-left{display:flex;flex-direction:column;gap:4px}
+    .drop-title{font-weight:700}
+    .drop-sub{font-size:.85rem;color:var(--muted)}
+    .drop-right{font-size:1.6rem;opacity:.9;user-select:none}
+
+    /* Controls */
+    .controls{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+    }
+    select, button{
+      background:var(--surface-2);
+      color:var(--text);
+      border:1px solid var(--border);
+      padding:9px 12px;
+      border-radius:10px;
+      font-family:inherit;
+      font-size:.85rem;
+      cursor:pointer;
+      transition:.14s;
+    }
+    select:hover, button:hover{background:var(--surface-3);border-color:var(--border)}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .primary{
+      background:var(--accent);
+      border:1px solid var(--accent);
+      color:#050505;
+      font-weight:800;
+    }
+    .primary:hover{background:var(--accent-bright);border-color:var(--accent-bright)}
+
+    /* Preview */
+    .preview-wrap{
+      border:1px solid var(--border);
+      border-radius:12px;
+      overflow:hidden;
+      background:var(--surface);
+    }
+    .preview-head{
+      padding:10px 12px;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      color:var(--muted);
+      font-size:.85rem;
+    }
+    .preview-box{
+      height: clamp(220px, 38vh, 420px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:10px;
+    }
+    #preview{
+      max-width:100%;
+      max-height:100%;
+      object-fit:contain;
+      display:none;
+      border-radius:10px;
+      box-shadow:0 10px 26px rgba(0,0,0,.5);
+      background:#000;
+    }
+    .inverted{filter:invert(1) hue-rotate(180deg)}
+
+    /* Output */
+    #output-area{
+      flex:1;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:var(--surface);
+      padding:14px;
+      font-family:'IBM Plex Mono',ui-monospace,monospace;
+      font-size:14px;
+      line-height:1.6;
+      white-space:pre-wrap;
+      overflow:auto;
+      min-height: clamp(240px, 45vh, 540px);
+    }
+
+    .badge{
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      font-family:'IBM Plex Mono',monospace;
+      font-size:.74rem;
+      font-weight:600;
+      letter-spacing:.04em;
+      color:var(--text);
+      background:rgba(255,255,255,.03);
+      white-space:nowrap;
+    }
+    .low{border-color:var(--danger); color:var(--danger)}
+    .med{border-color:var(--warn); color:var(--warn)}
+    .high{border-color:var(--ok); color:var(--ok)}
+
+    .footer-actions{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    @media (max-width: 520px){
+      .footer-actions{grid-template-columns:1fr}
+    }
+
+    /* Loader overlay */
+    .overlay{
+      position:absolute;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(5,5,5,.82);
+      backdrop-filter: blur(6px);
+      z-index:10;
+    }
+    .overlay-card{
+      width:min(420px, 92%);
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:16px;
+      text-align:center;
+      box-shadow:var(--shadow);
+    }
+    .bar{
+      height:10px;
+      border-radius:999px;
+      background:var(--surface);
+      border:1px solid var(--border);
+      overflow:hidden;
+      margin-top:10px;
+    }
+    .bar > div{
+      height:100%;
+      width:0%;
+      background:var(--accent);
+      transition:width .15s linear;
+    }
+
+    .hint{
+      color:var(--muted);
+      font-size:.85rem;
+      margin-top:2px;
+    }
+    .hint b{color:var(--accent-bright);font-weight:600}
+
+    .relative{position:relative}
+  </style>
+</head>
+
+<body>
+  <header class="cs-header">
+    <div class="cs-left">
+      <a href="https://carino.systems" class="cs-icon-btn" title="Carino Systems">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      </a>
+      <span class="cs-page-name">SimpleOCR</span>
+      <div class="cs-info">
+        <span class="cs-info-title">Optical Character Recognition</span>
+        <span class="cs-info-desc">Client-side · Tesseract.js</span>
+      </div>
+    </div>
+    <div class="cs-right">
+      <a href="https://github.com/MiguelCarino" target="_blank" rel="noreferrer" class="cs-icon-btn" title="GitHub">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+      </a>
+      <a href="https://www.linkedin.com/in/miguelcarino94/" target="_blank" rel="noreferrer" class="cs-icon-btn" title="LinkedIn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <div class="app">
+    <div class="wrap">
+      <div class="grid">
+        <!-- LEFT -->
+        <section class="pane relative">
+          <div class="pane-head">
+            <div class="pane-title">INPUT</div>
+            <span class="badge" id="state-badge">Idle</span>
+          </div>
+
+          <div class="pane-body">
+            <div class="drop" id="dropzone" tabindex="0" role="button" aria-label="Drop image or click to upload">
+              <div class="drop-left">
+                <div class="drop-title">Drop image here or click to upload</div>
+                <div class="drop-sub">JPG, PNG, WebP • you can also paste (Ctrl+V)</div>
+              </div>
+              <div class="drop-right">📂</div>
+              <input id="picker" type="file" accept="image/*" hidden />
+            </div>
+
+            <div class="controls">
+              <select id="lang" title="OCR language">
+                <option value="eng" selected>English</option>
+                <option value="jpn">Japanese (日本語)</option>
+                <option value="rus">Russian (Русский)</option>
+                <option value="eng+jpn">Eng + JPN</option>
+              </select>
+
+              <button id="invert-view-btn" type="button">Invert View 🌓</button>
+              <button id="invert-ocr-btn" type="button">Invert for OCR ⚡</button>
+              <button id="rotate-btn" type="button">Rotate ⤾</button>
+
+              <button id="run-btn" class="primary" type="button" style="margin-left:auto;">Run OCR</button>
+              <button id="clear-btn" type="button">Reset</button>
+            </div>
+
+            <div class="hint">For white text on dark background, use <b>Invert for OCR</b>.</div>
+
+            <div class="preview-wrap">
+              <div class="preview-head">
+                <span>Preview</span>
+                <span id="file-name" class="hint">No file loaded</span>
+              </div>
+              <div class="preview-box">
+                <img id="preview" alt="Document preview">
+                <div id="preview-placeholder" class="hint">Upload an image to see a preview.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="overlay" id="loader">
+            <div class="overlay-card">
+              <div style="font-size:2rem;">⚡</div>
+              <div id="load-text" style="margin-top:6px;font-weight:800;">Preparing OCR engine…</div>
+              <div class="bar"><div id="bar"></div></div>
+              <div class="hint" style="margin-top:8px;">
+                First run may be slower while language data is cached.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT -->
+        <section class="pane">
+          <div class="pane-head">
+            <div class="pane-title">EXTRACTED TEXT</div>
+            <span class="badge" id="acc-badge">Accuracy: <span id="conf-val">0%</span></span>
+          </div>
+
+          <div class="pane-body">
+            <div id="output-area">Paste an image, drop it, or upload to begin…</div>
+
+            <div class="footer-actions">
+              <button id="copy-btn" class="primary" type="button">Copy</button>
+              <button id="download-btn" type="button">Download .txt</button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const picker = document.getElementById('picker');
+    const dropzone = document.getElementById('dropzone');
+    const preview = document.getElementById('preview');
+    const previewPlaceholder = document.getElementById('preview-placeholder');
+    const fileNameEl = document.getElementById('file-name');
+
+    const output = document.getElementById('output-area');
+
+    const loader = document.getElementById('loader');
+    const loadText = document.getElementById('load-text');
+    const bar = document.getElementById('bar');
+
+    const confVal = document.getElementById('conf-val');
+    const accBadge = document.getElementById('acc-badge');
+    const stateBadge = document.getElementById('state-badge');
+
+    const invertViewBtn = document.getElementById('invert-view-btn');
+    const invertOCRBtn = document.getElementById('invert-ocr-btn');
+    const rotateBtn = document.getElementById('rotate-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const copyBtn = document.getElementById('copy-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const runBtn = document.getElementById('run-btn');
+    const langSel = document.getElementById('lang');
+
+    let worker = null;
+    let activeObjectURL = null;
+
+    let currentFile = null;
+    let invertForOCR = false;
+    let rotation = 0;
+
+    let jobId = 0;
+    let isBusy = false;
+    let lastLang = langSel.value;
+
+    function setState(text){ stateBadge.textContent = text; }
+
+    function setBusy(v){
+      isBusy = v;
+      const disabled = v || !currentFile;
+      runBtn.disabled = disabled;
+      invertOCRBtn.disabled = disabled;
+      rotateBtn.disabled = disabled;
+      invertViewBtn.disabled = disabled;
+      langSel.disabled = v;
+    }
+
+    function setLoader(show){
+      loader.style.display = show ? 'flex' : 'none';
+      if(!show){
+        loadText.textContent = "Preparing OCR engine…";
+        bar.style.width = "0%";
+      }
+    }
+
+    function setConfidence(pct){
+      const p = Math.max(0, Math.min(100, pct|0));
+      confVal.textContent = p + "%";
+      accBadge.classList.remove("low","med","high");
+      if (p < 55) accBadge.classList.add("low");
+      else if (p < 80) accBadge.classList.add("med");
+      else accBadge.classList.add("high");
+    }
+
+    function cleanupURL(){
+      if(activeObjectURL){
+        URL.revokeObjectURL(activeObjectURL);
+        activeObjectURL = null;
+      }
+    }
+
+    function resetUI(){
+      jobId++;
+      cleanupURL();
+      currentFile = null;
+      invertForOCR = false;
+      rotation = 0;
+
+      output.textContent = "Paste an image, drop it, or upload to begin…";
+      setConfidence(0);
+      setState("Idle");
+
+      preview.style.display = "none";
+      preview.classList.remove("inverted");
+      previewPlaceholder.style.display = "block";
+      fileNameEl.textContent = "No file loaded";
+
+      invertOCRBtn.textContent = "Invert for OCR ⚡";
+      rotateBtn.textContent = "Rotate ⤾";
+
+      picker.value = "";
+      setBusy(false);
+    }
+
+    function fileOk(file){
+      return file && file.type && file.type.startsWith("image/");
+    }
+
+    function showPreview(file){
+      cleanupURL();
+      activeObjectURL = URL.createObjectURL(file);
+
+      preview.src = activeObjectURL;
+      preview.style.display = "block";
+      previewPlaceholder.style.display = "none";
+      fileNameEl.textContent = file.name || "image";
+    }
+
+    async function loadFile(file){
+      if(!fileOk(file)) return;
+      currentFile = file;
+      showPreview(file);
+      output.textContent = "";
+      setConfidence(0);
+      setState("Ready");
+      setBusy(false);
+      runBtn.disabled = false;
+    }
+
+    async function ensureWorker(){
+      if(worker) return worker;
+
+      setLoader(true);
+      setBusy(true);
+      setState("Loading OCR");
+
+      const language = langSel.value;
+
+      worker = await Tesseract.createWorker(language, 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round((m.progress || 0) * 100);
+            loadText.textContent = `Recognizing… ${pct}%`;
+            bar.style.width = pct + "%";
+          } else if (m.status) {
+            loadText.textContent = m.status;
+          }
+        }
+      });
+
+      setLoader(false);
+      setBusy(false);
+      setState(currentFile ? "Ready" : "Idle");
+      return worker;
+    }
+
+    langSel.addEventListener('change', async () => {
+      const lang = langSel.value;
+      if(lang === lastLang) return;
+      lastLang = lang;
+
+      if(worker){
+        setLoader(true);
+        setBusy(true);
+        setState("Switching language");
+        try{ await worker.terminate(); }catch(_){}
+        worker = null;
+        setLoader(false);
+        setBusy(false);
+        setState(currentFile ? "Ready" : "Idle");
+      }
+    });
+
+    function canvasPreprocess(file){
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        img.onload = () => {
+          try{
+            const w = img.naturalWidth, h = img.naturalHeight;
+            const rot = ((rotation % 360) + 360) % 360;
+            const swap = rot === 90 || rot === 270;
+            const cw = swap ? h : w;
+            const ch = swap ? w : h;
+
+            const canvas = document.createElement("canvas");
+            canvas.width = cw;
+            canvas.height = ch;
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+            ctx.save();
+            ctx.translate(cw/2, ch/2);
+            ctx.rotate(rot * Math.PI/180);
+            ctx.drawImage(img, -w/2, -h/2);
+            ctx.restore();
+
+            if(invertForOCR){
+              const imageData = ctx.getImageData(0,0,cw,ch);
+              const d = imageData.data;
+              for(let i=0;i<d.length;i+=4){
+                d[i] = 255 - d[i];
+                d[i+1] = 255 - d[i+1];
+                d[i+2] = 255 - d[i+2];
+              }
+              ctx.putImageData(imageData,0,0);
+            }
+
+            canvas.toBlob((blob) => {
+              URL.revokeObjectURL(url);
+              if(!blob) return reject(new Error("Failed to preprocess image."));
+              resolve(blob);
+            }, "image/png", 1.0);
+          }catch(err){
+            URL.revokeObjectURL(url);
+            reject(err);
+          }
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Could not load image."));
+        };
+
+        img.src = url;
+      });
+    }
+
+    async function runOCR(){
+      if(!currentFile || isBusy) return;
+
+      const myJob = ++jobId;
+      setBusy(true);
+      setLoader(true);
+      setState("Running OCR");
+      output.textContent = "";
+      setConfidence(0);
+
+      try{
+        const w = await ensureWorker();
+        const blob = await canvasPreprocess(currentFile);
+        if(myJob !== jobId) return;
+
+        const { data } = await w.recognize(blob);
+        if(myJob !== jobId) return;
+
+        const text = (data?.text || "").trim();
+        output.textContent = text || "No text found in this image.";
+        setConfidence(Math.round(data?.confidence || 0));
+        setState("Done");
+      }catch(err){
+        output.textContent = "Error: " + (err?.message || String(err));
+        setState("Error");
+      }finally{
+        if(myJob === jobId){
+          setLoader(false);
+          setBusy(false);
+          if(currentFile && stateBadge.textContent !== "Done" && stateBadge.textContent !== "Error"){
+            setState("Ready");
+          }
+        }
+      }
+    }
+
+    /* Actions */
+    dropzone.addEventListener('click', () => picker.click());
+    dropzone.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === ' ') picker.click(); });
+
+    picker.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if(f) loadFile(f);
+    });
+
+    invertViewBtn.addEventListener('click', () => {
+      if(!currentFile) return;
+      preview.classList.toggle('inverted');
+    });
+
+    invertOCRBtn.addEventListener('click', () => {
+      if(!currentFile) return;
+      invertForOCR = !invertForOCR;
+      invertOCRBtn.textContent = invertForOCR ? "Invert for OCR ✅" : "Invert for OCR ⚡";
+    });
+
+    rotateBtn.addEventListener('click', () => {
+      if(!currentFile) return;
+      rotation = (rotation + 90) % 360;
+      rotateBtn.textContent = rotation ? `Rotate ⤾ (${rotation}°)` : "Rotate ⤾";
+    });
+
+    runBtn.addEventListener('click', runOCR);
+    clearBtn.addEventListener('click', resetUI);
+
+    copyBtn.addEventListener('click', async () => {
+      const text = output.textContent || "";
+      if(!text.trim()) return;
+
+      const original = copyBtn.textContent;
+      try{
+        if(navigator.clipboard && window.isSecureContext){
+          await navigator.clipboard.writeText(text);
+        }else{
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        copyBtn.textContent = "Copied ✅";
+      }catch(_){
+        copyBtn.textContent = "Copy failed ❌";
+      }
+      setTimeout(() => copyBtn.textContent = original, 1200);
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const text = output.textContent || "";
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ocr.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    /* Drag & drop */
+    window.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+    window.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+    window.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) loadFile(f);
+    });
+
+    /* Paste */
+    window.addEventListener("paste", (e) => {
+      const f = e.clipboardData?.files?.[0];
+      if(f) loadFile(f);
+    });
+
+    /* Cleanup */
+    window.addEventListener("beforeunload", async () => {
+      cleanupURL();
+      try{ if(worker) await worker.terminate(); }catch(_){}
+    });
+
+    resetUI();
+  </script>
+</body>
+</html>
